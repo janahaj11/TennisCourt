@@ -159,11 +159,11 @@ class TennisCourt:
         """
         for idx, rsvn in enumerate(self.reservations):
             if rsvn.start_date > start_dt:
-                reservation = Reservation(name, start_dt, end_dt)
-                self.reservations.insert(idx, reservation)
+                new_reservation = Reservation(name, start_dt, end_dt)
+                self.reservations.insert(idx, new_reservation)
                 return None
-        reservation = Reservation(name, start_dt, end_dt)
-        self.reservations.append(reservation)
+        new_reservation = Reservation(name, start_dt, end_dt)
+        self.reservations.append(new_reservation)
         return None
 
     def cancel_reservation(self, name: str, start_dt: datetime) -> bool:
@@ -189,15 +189,15 @@ class TennisCourt:
                 return True
         return False
 
-    def print_schedule(self, start_dt: date, end_dt: date) -> None:
+    def print_schedule(self, start_dt: datetime.date, end_dt: datetime.date) -> None:
         """
         Prints the schedule of reservations between the specified start and end date.
 
         Parameters
         ----------
-        start_dt : date
+        start_dt : datetime.date
             The start date to filter reservations.
-        end_dt : date
+        end_dt : datetime.date
             The end date to filter reservations.
 
         Returns
@@ -294,7 +294,7 @@ class TennisCourt:
         self.session.commit()
         return None
 
-    def subtract_from_database(self, name: str, start_dt: datetime):
+    def subtract_from_database(self, name: str, start_dt: datetime) -> None:
         """
         Subtracts a reservation from the database.
 
