@@ -5,13 +5,13 @@ import pytest
 import sys
 from datetime import date, datetime, timedelta
 from io import StringIO
-from tennis import TennisCourt, Reservation
+import tennis
 from unittest import mock
 
 
 @pytest.fixture
 def tennis_court():
-    court = TennisCourt()
+    court = tennis.TennisCourt()
     return court
 
 
@@ -22,7 +22,7 @@ def test_init(tennis_court):
 def test_period_overlaps(tennis_court):
     start_dt = datetime.now()
     end_dt = start_dt + timedelta(hours=1)
-    rsvn = Reservation('John', start_dt, end_dt)
+    rsvn = tennis.Reservation('John', start_dt, end_dt)
     tennis_court.reservations.append(rsvn)
     assert tennis_court.period_overlaps(start_dt, end_dt) is True
 
@@ -46,7 +46,7 @@ def test_period_overlaps(tennis_court):
 def test_date_not_available(tennis_court):
     start_dt = datetime.now()
     end_dt = start_dt + timedelta(hours=1)
-    rsvn = Reservation('John', start_dt, end_dt)
+    rsvn = tennis.Reservation('John', start_dt, end_dt)
     tennis_court.reservations.append(rsvn)
     assert tennis_court.date_not_available(start_dt) is True
 
@@ -57,16 +57,18 @@ def test_date_not_available(tennis_court):
     assert tennis_court.date_not_available(start_dt_3) is False
 
 
-def test_two_reservations_per_week(tennis_court):
+@mock.patch('tennis.input')
+def test_two_reservations_per_week(mock_input, tennis_court):
+    mock_input.return_value = None
     # Same week: 22.05.2023 - 28.05.2023 as example
     start_dt_1 = datetime(2023, 5, 22, 0, 0)
     end_dt_1 = datetime(2023, 5, 22, 0, 1)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     start_dt_2 = datetime(2023, 5, 28, 23, 59)
     end_dt_2 = datetime(2023, 5, 29, 0, 0)
-    rsvn_2 = Reservation('John', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('John', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
 
     start_dt_3 = datetime(2023, 5, 21, 23, 59)
@@ -78,41 +80,43 @@ def test_two_reservations_per_week(tennis_court):
     start_dt_5 = datetime(2023, 5, 28, 23, 59)
     assert tennis_court.two_reservations_per_week('John', start_dt_5) is True
 
-    start_dt_5 = datetime(2023, 5, 29, 0, 0)
-    assert tennis_court.two_reservations_per_week('John', start_dt_5) is False
+    start_dt_6 = datetime(2023, 5, 29, 0, 0)
+    assert tennis_court.two_reservations_per_week('John', start_dt_6) is False
 
 
 @mock.patch("tennis.datetime")
-def test_one_hour_from_now_or_less(mock_datetime, tennis_court):
+@mock.patch("tennis.input")
+def test_one_hour_from_now_or_less(mock_input, mock_datetime):
     mock_datetime.now.return_value = datetime(2023, 5, 29, 12, 00)
+    mock_input.return_value = None
 
     start_dt_1 = datetime(2023, 5, 29, 12, 59)
-    assert tennis_court.one_hour_from_now_or_less(start_dt_1) is True
+    assert tennis.one_hour_from_now_or_less(start_dt_1) is True
 
-    start_dt_1 = datetime(2023, 5, 29, 13, 00)
-    assert tennis_court.one_hour_from_now_or_less(start_dt_1) is True
+    start_dt_2 = datetime(2023, 5, 29, 13, 00)
+    assert tennis.one_hour_from_now_or_less(start_dt_2) is True
 
-    start_dt_1 = datetime(2023, 5, 29, 13, 1)
-    assert tennis_court.one_hour_from_now_or_less(start_dt_1) is False
+    start_dt_3 = datetime(2023, 5, 29, 13, 1)
+    assert tennis.one_hour_from_now_or_less(start_dt_3) is False
 
 
 def test_next_available_date(tennis_court):
     # reservation from 28.05.2023 12:00 - 13:00 (same day)
     start_dt_1 = datetime(2023, 5, 28, 12, 0)
     end_dt_1 = datetime(2023, 5, 28, 13, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     # reservation from 28.05.2023 13:00 - 29.05.2023 13:00 (next day)
     start_dt_2 = datetime(2023, 5, 28, 13, 0)
     end_dt_2 = datetime(2023, 5, 29, 13, 0)
-    rsvn_2 = Reservation('Jenny', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('Jenny', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
 
     # reservation from 28.05.2023 13:30 - 15:00 (same day)
     start_dt_3 = datetime(2023, 5, 29, 13, 30)
     end_dt_3 = datetime(2023, 5, 29, 15, 0)
-    rsvn_3 = Reservation('Jack', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jack', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
 
     # Next available datetime: 29.05.2023 13:00 (until 13:30).
@@ -126,14 +130,14 @@ def test_available_periods(tennis_court):
     # reservation from 28.05.2023 12:00 - 13:00 (same day)
     start_dt_1 = datetime(2023, 5, 28, 12, 0)
     end_dt_1 = datetime(2023, 5, 28, 13, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     # Available 30 minutes between reservation 1 and 2
     # reservation from 28.05.2023 13:30 - 29.05.2023 13:00 (next day)
     start_dt_2 = datetime(2023, 5, 28, 13, 30)
     end_dt_2 = datetime(2023, 5, 29, 13, 0)
-    rsvn_2 = Reservation('Jenny', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('Jenny', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
     assert tennis_court.available_periods(end_dt_1) == [30]
 
@@ -141,7 +145,7 @@ def test_available_periods(tennis_court):
     # reservation from 29.05.2023 14:00 - 15:00 (same day)
     start_dt_3 = datetime(2023, 5, 29, 14, 00)
     end_dt_3 = datetime(2023, 5, 29, 15, 0)
-    rsvn_3 = Reservation('Jack', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jack', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
     assert tennis_court.available_periods(end_dt_2) == [30, 60]
 
@@ -149,7 +153,7 @@ def test_available_periods(tennis_court):
     # reservation from 29.05.2023 16:00 - 17:00 (same day)
     start_dt_4 = datetime(2023, 5, 29, 16, 30)
     end_dt_4 = datetime(2023, 5, 29, 17, 0)
-    rsvn_4 = Reservation('Alice', start_dt_4, end_dt_4)
+    rsvn_4 = tennis.Reservation('Alice', start_dt_4, end_dt_4)
     tennis_court.reservations.append(rsvn_4)
     assert tennis_court.available_periods(end_dt_3) == [30, 60, 90]
 
@@ -157,7 +161,7 @@ def test_available_periods(tennis_court):
     # reservation from 29.05.2023 20:00 - 21:00 (same day)
     start_dt_5 = datetime(2023, 5, 29, 20, 0)
     end_dt_5 = datetime(2023, 5, 29, 21, 0)
-    rsvn_5 = Reservation('Alan', start_dt_5, end_dt_5)
+    rsvn_5 = tennis.Reservation('Alan', start_dt_5, end_dt_5)
     tennis_court.reservations.append(rsvn_5)
     assert tennis_court.available_periods(end_dt_3) == [30, 60, 90]
 
@@ -166,14 +170,14 @@ def test_make_reservation(tennis_court):
     # reservation from 28.05.2023 12:00 - 13:00
     start_dt_1 = datetime(2023, 5, 28, 12, 0)
     end_dt_1 = datetime(2023, 5, 28, 13, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     # One day gap between reservation 1 and 3
     # reservation from 30.05.2023 12:30 - 30.05.2023 13:00
     start_dt_3 = datetime(2023, 5, 30, 12, 0)
     end_dt_3 = datetime(2023, 5, 30, 13, 0)
-    rsvn_3 = Reservation('Jenny', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jenny', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
 
     # New reservation to be made between reservation 1 and 3
@@ -198,20 +202,22 @@ def test_cancel_reservation(tennis_court):
     assert tennis_court.cancel_reservation('Mike', start_dt) is False
 
 
-def test_print_schedule(tennis_court):
+@mock.patch('tennis.input')
+def test_print_schedule(mock_input, tennis_court):
+    mock_input.return_value = None
     start_dt_1 = datetime(2023, 5, 28, 9, 0)
     end_dt_1 = datetime(2023, 5, 28, 10, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     start_dt_2 = datetime(2023, 5, 28, 12, 0)
     end_dt_2 = datetime(2023, 5, 28, 14, 0)
-    rsvn_2 = Reservation('Jenny', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('Jenny', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
 
     start_dt_3 = datetime(2023, 5, 28, 16, 0)
     end_dt_3 = datetime(2023, 5, 28, 17, 0)
-    rsvn_3 = Reservation('Jack', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jack', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
 
     captured_output = StringIO()
@@ -232,17 +238,17 @@ def test_print_schedule(tennis_court):
 def test_save_schedule_csv(tennis_court, tmp_path):
     start_dt_1 = datetime(2023, 5, 28, 9, 0)
     end_dt_1 = datetime(2023, 5, 28, 10, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     start_dt_2 = datetime(2023, 5, 28, 12, 0)
     end_dt_2 = datetime(2023, 5, 28, 14, 0)
-    rsvn_2 = Reservation('Alice', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('Alice', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
 
     start_dt_3 = datetime(2023, 5, 29, 12, 0)
     end_dt_3 = datetime(2023, 5, 29, 13, 0)
-    rsvn_3 = Reservation('Jack', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jack', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
 
     tennis_court.save_schedule(date(2023, 5, 28), date(2023, 5, 30), 'csv', 'schedule.csv')
@@ -264,17 +270,17 @@ def test_save_schedule_csv(tennis_court, tmp_path):
 def test_save_schedule_json(tennis_court, tmp_path):
     start_dt_1 = datetime(2023, 5, 28, 9, 0)
     end_dt_1 = datetime(2023, 5, 28, 10, 0)
-    rsvn_1 = Reservation('John', start_dt_1, end_dt_1)
+    rsvn_1 = tennis.Reservation('John', start_dt_1, end_dt_1)
     tennis_court.reservations.append(rsvn_1)
 
     start_dt_2 = datetime(2023, 5, 28, 12, 0)
     end_dt_2 = datetime(2023, 5, 28, 14, 0)
-    rsvn_2 = Reservation('Jenny', start_dt_2, end_dt_2)
+    rsvn_2 = tennis.Reservation('Jenny', start_dt_2, end_dt_2)
     tennis_court.reservations.append(rsvn_2)
 
     start_dt_3 = datetime(2023, 5, 29, 12, 0)
     end_dt_3 = datetime(2023, 5, 29, 13, 0)
-    rsvn_3 = Reservation('Jack', start_dt_3, end_dt_3)
+    rsvn_3 = tennis.Reservation('Jack', start_dt_3, end_dt_3)
     tennis_court.reservations.append(rsvn_3)
 
     tennis_court.save_schedule(date(2023, 5, 28), date(2023, 5, 30), 'json', 'schedule.json')
@@ -288,3 +294,101 @@ def test_save_schedule_json(tennis_court, tmp_path):
     json_file.close()
     assert saved_data == expected_data
     os.remove('schedule.json')
+
+
+@mock.patch("tennis.input")
+def test_main_menu(mock_input):
+    mock_input.return_value = '1'
+    assert tennis.main_menu() == '1'
+
+    mock_input.return_value = '5'
+    assert tennis.main_menu() == '5'
+
+    mock_input.return_value = 'foo'
+    assert tennis.main_menu() == 'foo'
+
+
+@mock.patch("tennis.input")
+def test_name_validation(mock_input):
+    mock_input.return_value = 'John'
+    assert tennis.name_validation('test') == 'John'
+
+    mock_input.return_value = ''
+    assert tennis.name_validation('test') is None
+
+
+@mock.patch("tennis.input")
+def test_datetime_validation(mock_input):
+    mock_input.return_value = '29.05.2023 12:00'
+    expected_datetime = datetime(2023, 5, 29, 12, 0)
+    assert tennis.datetime_validation('test') == expected_datetime
+
+    mock_input.return_value = '29.05.2023 02:01'
+    expected_datetime = datetime(2023, 5, 29, 2, 1)
+    assert tennis.datetime_validation('test') == expected_datetime
+
+    mock_input.return_value = '30.02.2023 12:00'
+    assert tennis.datetime_validation('test') is None
+
+    mock_input.return_value = '29.05.2023 12:1'
+    assert tennis.datetime_validation('test') is None
+
+    mock_input.return_value = '29/05/2023 2:21'
+    assert tennis.datetime_validation('test') is None
+
+    mock_input.return_value = '29.05.2023 12:61'
+    assert tennis.datetime_validation('test') is None
+
+    mock_input.return_value = 'invalid datetime'
+    assert tennis.datetime_validation('test') is None
+
+
+@mock.patch("tennis.input")
+def test_date_validation(mock_input):
+    mock_input.return_value = '29.05.2023'
+    expected_date = datetime(2023, 5, 29).date()
+    assert tennis.date_validation('test') == expected_date
+
+    mock_input.return_value = '01.05.2023'
+    expected_date = datetime(2023, 5, 1).date()
+    assert tennis.date_validation('test') == expected_date
+
+    mock_input.return_value = '1.5.2023'
+    assert tennis.date_validation('test') is None
+
+    mock_input.return_value = '1.05.2023'
+    assert tennis.date_validation('test') is None
+
+    mock_input.return_value = 'invalid date'
+    assert tennis.date_validation('test') is None
+
+
+@mock.patch("tennis.input")
+def test_period_validation(mock_input):
+    available_periods = [1, 2, 3]
+    mock_input.return_value = '2'
+    assert tennis.period_validation(available_periods) == 2
+
+    mock_input.return_value = '5'
+    assert tennis.period_validation(available_periods) is None
+
+
+@mock.patch("tennis.input")
+def test_agreement(mock_input):
+    mock_input.return_value = 'yes'
+    assert tennis.agreement(datetime(2023, 5, 29)) == 'yes'
+
+    mock_input.return_value = 'no'
+    assert tennis.agreement(datetime(2023, 5, 29)) == 'no'
+
+
+@mock.patch("tennis.input")
+def test_validation_file_type(mock_input):
+    mock_input.return_value = 'json'
+    assert tennis.validation_file_type() == 'json'
+
+    mock_input.return_value = 'csv'
+    assert tennis.validation_file_type() == 'csv'
+
+    mock_input.return_value = 'txt'
+    assert tennis.validation_file_type() is None
