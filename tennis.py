@@ -1,11 +1,13 @@
 import csv
 import json
-import sqlalchemy
-import re
 from datetime import date, datetime, timedelta
-from models import Base, Reservations
+
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from typing import Optional
+
+
+import validators
+from models import Base, Reservations
 
 
 class Reservation:
@@ -19,12 +21,12 @@ class TennisCourt:
     def __init__(self):
         self.reservations = []
         connection_string = 'sqlite:///tennis_court.db'
-        engine = sqlalchemy.create_engine(connection_string)
+        engine = create_engine(connection_string)
         Base.metadata.create_all(engine)
         session = sessionmaker(bind=engine)
         self.session = session()
 
-    def period_overlaps(self, start_dt: datetime, end_dt: datetime) -> bool:
+    def is_period_overlaps(self, start_dt: datetime, end_dt: datetime) -> bool:
         """
         Checks if the given time period overlaps with any existing reservations.
 
@@ -40,12 +42,12 @@ class TennisCourt:
         bool
             True if there is an overlap, False otherwise.
         """
-        for rsvn in self.reservations:
-            if start_dt < rsvn.end_date and end_dt > rsvn.start_date:
+        for reservation in self.reservations:
+            if start_dt < reservation.end_date and end_dt > reservation.start_date:
                 return True
         return False
 
-    def date_not_available(self, start_dt: datetime) -> bool:
+    def is_date_not_available(self, start_dt: datetime) -> bool:
         """
         Checks if the given date and time is already reserved.
 
@@ -59,12 +61,12 @@ class TennisCourt:
         bool
             True if the date and time is not available, False otherwise.
         """
-        for rsvn in self.reservations:
-            if rsvn.start_date <= start_dt < rsvn.end_date:
+        for reservation in self.reservations:
+            if reservation.start_date <= start_dt < reservation.end_date:
                 return True
         return False
 
-    def two_reservations_per_week(self, name: str, start_dt: datetime) -> bool:
+    def is_two_reservations_per_week(self, name: str, start_dt: datetime) -> bool:
         """
         Checks if the given person has already made two reservations in the same week.
 
@@ -82,8 +84,8 @@ class TennisCourt:
         """
         counter = 0
         week_no = datetime.isocalendar(start_dt).week
-        for rsvn in self.reservations:
-            if name == rsvn.name and datetime.isocalendar(rsvn.start_date).week == week_no:
+        for reservation in self.reservations:
+            if name == reservation.name and datetime.isocalendar(reservation.start_date).week == week_no:
                 counter += 1
                 if counter > 1:
                     input(f'Sorry, {name} has reached the reservation limit for this week (2).\n'
@@ -106,11 +108,11 @@ class TennisCourt:
             The next available date and time for a reservation.
         """
         closest_time = start_dt
-        for rsvn in self.reservations:
-            if rsvn.start_date >= closest_time + timedelta(minutes=30):
+        for reservation in self.reservations:
+            if reservation.start_date >= closest_time + timedelta(minutes=30):
                 return closest_time
-            elif closest_time <= rsvn.end_date:
-                closest_time = rsvn.end_date
+            elif closest_time <= reservation.end_date:
+                closest_time = reservation.end_date
         return closest_time
 
     def available_periods(self, start_dt: datetime) -> list[int]:
@@ -131,7 +133,7 @@ class TennisCourt:
         periods = [30, 60, 90]
         for period in periods:
             end_dt = start_dt + timedelta(minutes=period)
-            if self.period_overlaps(start_dt, end_dt):
+            if self.is_period_overlaps(start_dt, end_dt):
                 break 
             avl_periods.append(period)
         print('\nHow long would you like to book court?\n'
@@ -157,8 +159,8 @@ class TennisCourt:
         -------
         None
         """
-        for idx, rsvn in enumerate(self.reservations):
-            if rsvn.start_date > start_dt:
+        for idx, reservation in enumerate(self.reservations):
+            if reservation.start_date > start_dt:
                 new_reservation = Reservation(name, start_dt, end_dt)
                 self.reservations.insert(idx, new_reservation)
                 return None
@@ -166,7 +168,7 @@ class TennisCourt:
         self.reservations.append(new_reservation)
         return None
 
-    def cancel_reservation(self, name: str, start_dt: datetime) -> bool:
+    def is_reservation_cancelled(self, name: str, start_dt: datetime) -> bool:
         """
         Checks if reservation already exists for given name, date and time.
         Cancels a reservation for the specified name and start date.
@@ -183,10 +185,12 @@ class TennisCourt:
         bool
             True if the reservation was successfully canceled, False otherwise.
         """
-        for rsvn in self.reservations:
-            if name == rsvn.name and start_dt == rsvn.start_date:
-                self.reservations.remove(rsvn)
+        for reservation in self.reservations:
+            if name == reservation.name and start_dt == reservation.start_date:
+                self.reservations.remove(reservation)
                 return True
+        input('No reservation found for the given name and date.\n'
+              'Press enter to return to main menu.')
         return False
 
     def print_schedule(self, start_dt: datetime.date, end_dt: datetime.date) -> None:
@@ -211,14 +215,17 @@ class TennisCourt:
             elif current_date == date.today() + timedelta(days=1):
                 print('Tomorrow')
             else:
-                print(current_date.strftime("%A, %d %B, %Y:"))
+                print(current_date.strftime("%A, %d %B, %Y"))
                 
-            reservations = [rsvn for rsvn in self.reservations if rsvn.start_date.date() == current_date]
+            reservations = [reservation for reservation in self.reservations
+                            if reservation.start_date.date() == current_date]
             if not reservations:
                 print("No reservations\n")
             else:
-                for rsvn in reservations:
-                    print(f"* {rsvn.name} {rsvn.start_date.strftime('%H:%M')} - {rsvn.end_date.strftime('%H:%M')}")
+                for reservation in reservations:
+                    print(f"* {reservation.name} "
+                          f"{reservation.start_date.strftime('%H:%M')} - "
+                          f"{reservation.end_date.strftime('%H:%M')}")
                 print()
             current_date += timedelta(days=1)
         input('Schedule printed.\n'
@@ -246,32 +253,34 @@ class TennisCourt:
         """
         start_date = start_dt
         end_date = end_dt
-        filtered_reservations = [rsvn for rsvn in self.reservations if start_date <= rsvn.start_date.date() <= end_date]
+        filtered_reservations = [reservation for reservation in self.reservations
+                                 if start_date <= reservation.start_date.date() <= end_date]
         if file_format == 'csv':
             with open(save_file_name, mode='w', encoding='utf-8') as csv_file:
                 fieldnames = ['name', 'start_date', 'end_date']
                 writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
                 writer.writeheader()
-                for rsvn in filtered_reservations:
-                    writer.writerow({'name': rsvn.name,
-                                     'start_date': rsvn.start_date.strftime("%d.%m.%Y %H:%M"),
-                                     'end_date': rsvn.end_date.strftime("%d.%m.%Y %H:%M")})
-            csv_file.close()
+                for reservation in filtered_reservations:
+                    writer.writerow({'name': reservation.name,
+                                     'start_date': reservation.start_date.strftime("%d.%m.%Y %H:%M"),
+                                     'end_date': reservation.end_date.strftime("%d.%m.%Y %H:%M")})
         elif file_format == 'json':
             schedule_by_date = {}
-            for rsvn in filtered_reservations:
-                day_date = rsvn.start_date.strftime("%d.%m.%Y")
+            for reservation in filtered_reservations:
+                day_date = reservation.start_date.strftime("%d.%m.%Y")
                 appointment = {
-                    "name": rsvn.name,
-                    "start_time": rsvn.start_date.strftime("%H:%M"),
-                    "end_time": rsvn.end_date.strftime("%H:%M")}
+                    "name": reservation.name,
+                    "start_time": reservation.start_date.strftime("%H:%M"),
+                    "end_time": reservation.end_date.strftime("%H:%M")}
                 if day_date not in schedule_by_date:
                     schedule_by_date[day_date] = [appointment]
                 else:
                     schedule_by_date[day_date].append(appointment)
             with open(save_file_name, mode='w', encoding='utf-8') as json_file:
                 json.dump(schedule_by_date, json_file, indent=2)
-            json_file.close()
+        input(f'\n{save_file_name}.{file_format} saved successfully!\n'
+              f'Press enter to return to main menu.')
+        return None
 
     def add_to_database(self, name: str, start_dt: datetime, end_dt: datetime) -> None:
         """
@@ -292,6 +301,8 @@ class TennisCourt:
         """
         self.session.add(Reservations(name=name, start_date=start_dt, end_date=end_dt))
         self.session.commit()
+        input(f'Reservation successfully made!\n'
+              f'Press enter to return to main menu.')
         return None
 
     def subtract_from_database(self, name: str, start_dt: datetime) -> None:
@@ -312,6 +323,8 @@ class TennisCourt:
         reservation = self.session.query(Reservations).filter_by(name=name, start_date=start_dt).one()
         self.session.delete(reservation)
         self.session.commit()
+        input('Reservation successfully cancelled!\n'
+              'Press enter to return to main menu.')
         return None
 
     def load_schedule_from_database(self) -> None:
@@ -326,7 +339,7 @@ class TennisCourt:
         return None
 
 
-def one_hour_from_now_or_less(start_dt: datetime) -> bool:
+def is_one_hour_from_now(start_dt: datetime) -> bool:
     """
     Checks if the given date and time is within one hour from the current time.
 
@@ -366,149 +379,6 @@ def main_menu() -> str:
     return user_menu_choice
 
 
-def name_validation(question_name: str) -> Optional[str]:
-    """
-    Validates the user's name input.
-
-    Parameters
-    ----------
-    question_name : str
-        The specific expression related to the input question.
-
-    Returns
-    -------
-    str or None
-        The user's name if valid, or None if empty string.
-    """
-    name = input(f"\nWhat's {question_name}?\n\n$ ")
-    if name == '':
-        input('Invalid name.\n'
-              'Press enter to return to main menu.')
-        return None
-    return name
-
-
-def datetime_validation(question_name: str) -> Optional[datetime]:
-    """
-    Validates the user's input for the reservation date and time.
-    Accepts only - dd.mm.yyyy hh:mm format - zero-padded hours and minutes.
-
-    Parameters
-    ----------
-    question_name : str
-        The specific expression related to the input question.
-
-    Returns
-    -------
-    datetime or None
-        The reservation date and time as a datetime.datetime object if valid, or None if invalid.
-    """
-    pattern = r"\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}"
-    usr_datetime = input(f"\nEnter the date and time for which you would like to {question_name} a reservation? "
-                         "{DD.MM.YYYY HH:MM}\n\n$ ")
-    if re.fullmatch(pattern, usr_datetime):
-        try:
-            usr_datetime = datetime.strptime(usr_datetime, "%d.%m.%Y %H:%M")
-            return usr_datetime
-        except ValueError:
-            pass
-    input(f'Invalid date format.\n'
-          f'Press enter to return to main menu.')
-    return None
-
-
-def date_validation(question_name: str) -> Optional[datetime.date]:
-    """
-    Validates the user's input for the date of the reservation.
-    Accepts only - dd.mm.yyyy format.
-
-    Parameters
-    ----------
-    question_name : str
-        The specific expression related to the input question.
-
-    Returns
-    -------
-    datetime.date or None
-        The reservation start date as a date object if valid, or None if invalid.
-    """
-    pattern = r"\d{2}\.\d{2}\.\d{4}"
-    user_date = input(f'\nPlease enter the {question_name} date {{DD.MM.YYYY}}\n\n$ ')
-    if re.fullmatch(pattern, user_date):
-        try:
-            user_date = datetime.strptime(user_date, "%d.%m.%Y").date()
-            return user_date
-        except ValueError:
-            pass
-    input(f'Invalid date format.\n'
-          f'Press enter to return to main menu.')
-    return None
-
-
-def period_validation(avl_periods: list[int]) -> Optional[int]:
-    """
-    Validates the user's input for the chosen reservation period.
-
-    Parameters
-    ----------
-    avl_periods : list[int]
-        A list of available reservation periods.
-
-    Returns
-    -------
-    int or None
-        The user's chosen reservation period if valid, or None if invalid.
-    """
-    try:
-        user_chosen_period = int(input(f'\n$ '))
-        if user_chosen_period in avl_periods:
-            return user_chosen_period
-    except ValueError:
-        pass
-    input(f'Chosen period not available.\n'
-          f'Press enter to return to the main menu.')
-    return None
-
-
-def agreement(datetime_of_next_reservation: datetime) -> str:
-    """
-    Prompts the user to confirm or change the reservation date and time.
-
-    Parameters
-    ----------
-    datetime_of_next_reservation : datetime.datetime
-        The alternative reservation date related to the input question.
-
-    Returns
-    -------
-    str
-        The user's agreement choice as a string.
-    """
-    user_agreement = input(f'The time you chose is unavailable.\n'
-                           f'Would you like to make a reservation for '
-                           f'{datetime_of_next_reservation} instead?(yes/no)\n\n$ ')
-    return user_agreement
-
-
-def validation_file_type() -> Optional[str]:
-    """
-    Validates the user's input for the file type.
-
-    Returns
-    -------
-    str or None
-        The user's chosen file type ('json' or 'csv') if it is valid,
-        or None if the input is invalid.
-    """
-    available_file_types = ('json', 'csv')
-    user_file_type = input('\nPlease enter type of the file (json/csv)\n\n$ ')
-    if user_file_type not in available_file_types:
-        input('Invalid file format\n'
-              'Press enter to return to main menu.')
-        return None
-    return user_file_type
-
-
 if __name__ == '__main__':
     court = TennisCourt()
     court.load_schedule_from_database()
@@ -518,29 +388,29 @@ if __name__ == '__main__':
 
         match menu_choice:
             case '1':  # 1. Make a reservation
-                usr_name = name_validation('your name')
+                usr_name = validators.name_validation('your name')
                 if usr_name is None:
                     continue
 
                 while True:
-                    usr_date = datetime_validation('make')
+                    usr_date = validators.datetime_validation('make')
                     if usr_date is None:
                         break
 
-                    if court.two_reservations_per_week(usr_name, usr_date):
+                    if court.is_two_reservations_per_week(usr_name, usr_date):
                         break
 
-                    if one_hour_from_now_or_less(usr_date):
+                    if is_one_hour_from_now(usr_date):
                         break
 
-                    if court.date_not_available(usr_date):
+                    if court.is_date_not_available(usr_date):
                         usr_date = court.next_available_datetime(usr_date)
-                        if agreement(usr_date).lower() != 'yes':
+                        if validators.agreement(usr_date).lower() != 'yes':
                             continue
 
                     available_periods = court.available_periods(usr_date)
 
-                    chosen_period = period_validation(available_periods)
+                    chosen_period = validators.period_validation(available_periods)
                     if chosen_period is None:
                         break
 
@@ -549,38 +419,30 @@ if __name__ == '__main__':
 
                     court.make_reservation(usr_name, usr_start, usr_end)
                     court.add_to_database(usr_name, usr_start, usr_end)
-                    input(f'Reservation successfully made!\n'
-                          f'Press enter to return to main menu.')
                     break
 
             case '2':  # 2. Cancel a reservation
-                usr_name = name_validation('your name')
+                usr_name = validators.name_validation('your name')
                 if usr_name is None:
                     continue
 
-                usr_date = datetime_validation('cancel')
+                usr_date = validators.datetime_validation('cancel')
                 if usr_date is None:
                     continue
 
-                if one_hour_from_now_or_less(usr_date):
+                if is_one_hour_from_now(usr_date):
                     continue
 
-                if court.cancel_reservation(usr_name, usr_date):
+                if court.is_reservation_cancelled(usr_name, usr_date):
                     court.subtract_from_database(usr_name, usr_date)
-                    input('Reservation successfully cancelled!\n'
-                          'Press enter to return to main menu.')
-                    continue
-                else:
-                    input('No reservation found for the given name and date.\n'
-                          'Press enter to return to main menu.')
-                    continue
+                continue
 
             case '3':  # 3. Print schedule
-                start_schedule = date_validation('start')
+                start_schedule = validators.date_validation('start')
                 if start_schedule is None:
                     continue
 
-                end_schedule = date_validation('end')
+                end_schedule = validators.date_validation('end')
                 if end_schedule is None:
                     continue
 
@@ -588,25 +450,23 @@ if __name__ == '__main__':
                 continue
 
             case '4':  # 4. Save schedule to a file
-                start_save = date_validation('start')
+                start_save = validators.date_validation('start')
                 if start_save is None:
                     continue
 
-                end_save = date_validation('end')
+                end_save = validators.date_validation('end')
                 if end_save is None:
                     continue
 
-                file_type = validation_file_type()
+                file_type = validators.validation_file_type()
                 if file_type is None:
                     continue
 
-                file_name = name_validation('name of your file')
+                file_name = validators.name_validation('name of your file')
                 if file_name is None:
                     continue
 
                 court.save_schedule(start_save, end_save, file_type, file_name)
-                input(f'\n{file_name} saved successfully!\n'
-                      f'Press enter to return to main menu.')
                 continue
 
             case '5':  # 5. Exit

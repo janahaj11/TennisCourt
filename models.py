@@ -3,6 +3,7 @@ from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
+
 class Reservations(Base):
     __tablename__ = 'reservations'
 
